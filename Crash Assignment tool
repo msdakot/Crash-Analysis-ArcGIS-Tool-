@@ -1,0 +1,164 @@
+"""
+THIS SCRIPT LETS USER TO ASSIGN CRASHES TO SEGMENTS
+Mention the steps and variables used
+"""
+
+
+# Import necessary modules
+import sys, os, string, math, arcpy, traceback
+# Allow output file to overwrite any existing file of the same name
+arcpy.env.overwriteOutput = True
+
+
+#Set workspace
+arcpy.env.workspace = "c:/output"
+
+
+try:
+
+  # Request user input of data
+  Segment = arcpy.GetParameterAsText(0)
+  Nodes = arcpy.GetParameterAsText(1)
+  CrashData = arcpy.GetParameterAsText(2)
+  TrafficData = arcpy.GetParameterAsText(3)
+  outputFolderPath = arcpy.GetParameterAsText(4)
+  max_dist = arcpy.GetParameterAsText(6) #within a distance search 
+
+
+  print(outputFolderPath)
+  arcpy.AddMessage("Starting Assignment")
+  arcpy.AddMessage(datetime.datetime.now())
+
+
+  arcpy.AddMessage("Assigning the crashes at: ")
+  arcpy.AddMessage(outputFolderPath)
+  arcpy.AddMessage("to Segements")
+  arcpy.AddMessage(Segment)
+
+  #Function to remove unwanted fields from the crash dataset......................................
+  def FieldToBRemoved(InputShapefile):
+    fieldList = arcpy.ListFields(InputShapefile)
+    fieldNameList = [] #creating an empty list to be appended 
+
+    for field in fieldObjList:
+
+      if field.required or (field.name == 'CRASH_YEAR') or (field.name == 'lat_final') or (field.name == 'long_final'):
+        continue
+      fieldNameList.append(field.name)
+    arcpy.DeleteField_management(InputShapefile, fieldNameList)
+    arcpy.AddMessage("\n" + "Cleaning crash points data")
+
+  # Function to Spatial join the dataset to Segments.............................................. 
+  def assign_segid_to_crashes(max_dist, Segment, CrashData, outputFolderPath):
+      """
+      This function first creates the Field mapping and then performs a
+      spatial join between Crash Feature Class and Segment Feature Class
+      """
+      try:
+          # Specify target features, join features
+          target_features = CrashData
+          join_features = Segment
+
+          # Create a new fieldmappings and add the two input feature classes.
+          field_mappings = arcpy.FieldMappings()
+          field_mappings.addTable(target_features)
+          field_mappings.addTable(join_features.dataSource)
+
+          # Retain all the fields from crash feature class from field mappings and
+          # remove all fields from segment feature class except SEGMENTID
+          desc = arcpy.Describe(target_features)
+
+          retained_fields = [(fld.name).upper() for fld in desc.fields]
+          retained_fields += [SEG_ID]
+
+          del desc
+
+
+          arcpy.SpatialJoin_analysis( target_features, join_features, outputFolderPath,
+          "JOIN_ONE_TO_ONE", "KEEP_ALL","", "CLOSEST", max_dist)
+
+          arcpy.DeleteField_management(["JOIN_COUNT", "TARGET_FID"])
+
+          del retained_fields
+          return True
+
+
+      except arcpy.ExecuteError:
+        arcpy.AddError("Error occured while performing Spatial Join for " +
+                        "Crash Feature Class.")
+        return False
+
+      except Exception:
+        arcpy.AddError("Error occured while performing Spatial Join for " +
+                        "Crash Feature Class.")
+        return False
+
+  # Function to Spatial join the Traffic to Segments.............................................. 
+  def assign_Traffic(max_dist, Segment, CrashData, outputFolderPath):
+    """
+      This function first creates the Field mapping and then performs a
+      spatial join between Crash Feature Class and Segment Feature Class
+    """
+      try:
+          # Specify target features, join features
+          target_features = Segment
+          join_features = TrafficData
+
+
+          # Create a new fieldmappings and add the two input feature classes.
+          field_mappings = arcpy.FieldMappings()
+          field_mappings.addTable(target_features)
+          field_mappings.addTable(join_features.dataSource)
+          f_Index = field_mappings.findFieldMapIndex("CUR_AADT")
+          fieldmap = field_mappings.getFieldMap(f_Index)
+
+
+          field = fieldmap.outputField
+          field.name = "mean_AADT"
+          field.aliasName = "mean_AADT"
+          fieldmap.outputField = field
+
+
+          fieldmap.mergeRule = "mean"
+          field_mappings.replaceFieldMap(f_Index, fieldmap)
+          
+          # remove all fields from segment feature class except SEGMENTID
+          desc = field_mappings.findFieldMapIndex("SEG_LNGTH_")
+          field_mappings.removeFieldMap(desc)
+
+
+
+          arcpy.SpatialJoin_analysis( target_features, join_features, outputFolderPath+"SegTraffic",
+                  "JOIN_ONE_TO_ONE", "KEEP_COMMON",field_mappings, "HAVE_THEIR_CENTER_IN","","")
+
+
+          arcpy.DeleteField_management(TrafficBuf)
+
+          del retained_fields
+          return True
+      except arcpy.ExecuteError:
+        arcpy.AddError("Error occured while performing Spatial Join for " +
+                              "Traffic feature class.")
+        return False
+      except Exception:
+        arcpy.AddError("Error occured while performing Spatial Join for " +
+                              "Traffic feature class.")
+
+        return False
+
+  #Function to assign the crashes to Street_Traffic file 
+  def crass_final_assign(Shapefile, )     
+
+  FieldToBRemoved(CrashData) 
+
+  crash_output_fc = assign_segid_to_crashes(max_dist, Segment,CrashData, outputFolderPath)
+
+
+except Exception as e:
+  # If unsuccessful, end gracefully by indicating why
+  arcpy.AddError('\n' + "Script failed because: \t\t" + e.message + "\n" )
+
+  # ... and where
+  exceptionreport = sys.exc_info()[2]
+  fullermessage = traceback.format_tb(exceptionreport)[0]
+  arcpy.AddError("at this location: \n\n" + fullermessage + "\n")
