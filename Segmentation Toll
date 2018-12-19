@@ -1,0 +1,86 @@
+
+
+"""
+THIS SCRIPT LETS USER CREATE SEGMENTS AND NODES
+Mention the steps and variables used
+"""
+
+# Import necessary modules
+import sys, os, string, math, arcpy, traceback
+
+# Allow output file to overwrite any existing file of the same name
+arcpy.env.overwriteOutput = True
+
+#Set workspace
+arcpy.env.workspace = "C:\output"
+
+
+try:
+
+  # Request user input of data
+  Street_Centerline = arcpy.GetParameterAsText(0)
+  path = arcpy.GetParameterAsText(1)
+
+
+  print(path)
+  print(Street_Centerline)
+  arcpy.AddMessage("Starting Segmentation")
+  arcpy.AddMessage(datetime.datetime.now())
+
+  arcpy.AddMessage("creating nodes, edges, and shapefiles at: ")
+  arcpy.AddMessage(path)
+  arcpy.AddMessage("using street centerline file: ")
+  arcpy.AddMessage(Street_Centerline)
+
+
+  # Function to Clean dataset..........................................................
+
+  enumerationOfRecords = arcpy.UpdateCursor(Street_Centerline)
+
+  for Record in enumerationOfRecords:
+    # Get rid of the streetcenterlines that we don't want based on street classification
+    Type = Record.getValue('ST_TYPE')
+    if (Type == 'ALY') or (Type == 'HTS') or (Type == 'PLZ')or (Type == 'NULL' ) or (Type == 'TER') or (Type == 'TRL') or (Type == 'WALK'):
+      enumerationOfRecords.deleteRow(Record)
+  # Delete row and update cursor objects to avoid locking attribute table
+
+  del Record
+  del enumerationOfRecords
+
+
+  streetsLayer = arcpy.MakeFeatureLayer_management (Street_Centerline, "streetsLayer")
+  streetsLayer  = arcpy.Dissolve_management(streetsLayer)
+  streetClassToLine = arcpy.FeatureToLine_management(streetsLayer,path+"_Lines")
+  streetClassNodes = arcpy.FeatureVerticesToPoints_management(streetClassToLine,path+"_nodes","BOTH_ENDS")
+
+  arcpy.AddField_management(streetClassToLine, "SEG_ID" "SHORT", 10)
+  arcpy.CalculateField_management(streetClassToLine,"SEG_ID","!FID!+3000","PYTHON3" )
+
+  arcpy.AddMessage("Created nodes and edges shapefiles")
+
+
+  # spatial join between edges file and nodes file to find start nodes and end nodes for each edge
+  EdgeNodeSpatialJoin = arcpy.SpatialJoin_analysis(streetClassToLine,streetClassNodes,path+"edgeNodeSpatialJoin.shp","JOIN_ONE_TO_MANY","KEEP_ALL",match_option="INTERSECT",)
+
+
+  arcpy.AddMessage("edge node spatial join completed")
+
+  # spatial join nodes to the previous spatial join to get start node, end node and edges
+  NodeEdgeSpatialJoin = arcpy.SpatialJoin_analysis(streetClassNodes,EdgeNodeSpatialJoin,path+"NodeEdgeSpatialJoin.shp","JOIN_ONE_TO_MANY","KEEP_ALL",match_option="INTERSECT")
+
+  arcpy.AddMessage("node edge spatial join completed")
+
+
+
+except Exception as e:
+
+  # If unsuccessful, end gracefully by indicating why
+  arcpy.AddError('\n' + "Script failed because: \t\t" + e.message + "\n" )
+
+
+  # ... and where
+  exceptionreport = sys.exc_info()[2]
+  fullermessage = traceback.format_tb(exceptionreport)[0]
+
+  arcpy.AddError("at this location: \n\n" + fullermessage + "\n")
+  
